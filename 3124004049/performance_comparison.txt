@@ -1,0 +1,4 @@
+Input sizes: source=2400, candidate=2400 characters
+Pairwise prototype median (5 runs): 0.185248 seconds
+Counter implementation median (5 runs): 0.001039 seconds
+Observed speedup: 178.4x

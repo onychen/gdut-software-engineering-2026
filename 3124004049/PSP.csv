@@ -1,0 +1,14 @@
+阶段,任务,预估耗时（分钟）,实际耗时（分钟）
+Planning,估计任务耗时,10,待本人实际填写
+Development,需求分析与学习,20,待本人实际填写
+Development,设计文档,20,待本人实际填写
+Development,设计复审,10,待本人实际填写
+Development,制定代码规范,10,待本人实际填写
+Development,算法与模块设计,25,待本人实际填写
+Development,编码实现,50,待本人实际填写
+Development,代码复审,15,待本人实际填写
+Development,测试与修复,30,待本人实际填写
+Reporting,测试报告,15,待本人实际填写
+Reporting,工作量测量,10,待本人实际填写
+Reporting,总结与过程改进计划,15,待本人实际填写
+Total,合计,230,待本人实际填写
