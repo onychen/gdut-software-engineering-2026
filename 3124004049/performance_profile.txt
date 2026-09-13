@@ -1,21 +1,21 @@
 Source length: 380000 characters
 Candidate length: 403000 characters
 Similarity rate: 0.94
-         4133041 function calls (4133029 primitive calls) in 0.909 seconds
+         4133041 function calls (4133029 primitive calls) in 0.902 seconds
 
    Ordered by: internal time
    List reduced from 23 to 12 due to restriction <12>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-   742000    0.276    0.000    0.371    0.000 main.py:28(<genexpr>)
-        1    0.142    0.142    0.909    0.909 main.py:34(similarity_rate)
-   742002    0.130    0.000    0.196    0.000 main.py:20(<genexpr>)
-  1483996    0.095    0.000    0.095    0.000 {built-in method builtins.ord}
-        2    0.089    0.044    0.285    0.142 {method 'join' of 'str' objects}
-   783000    0.066    0.000    0.066    0.000 {method 'isalnum' of 'str' objects}
-        1    0.060    0.060    0.238    0.238 {built-in method _collections._count_elements}
-   381999    0.049    0.000    0.049    0.000 {method 'get' of 'dict' objects}
-        2    0.003    0.001    0.003    0.001 {method 'casefold' of 'str' objects}
-        2    0.001    0.000    0.001    0.000 {built-in method unicodedata.normalize}
-        2    0.000    0.000    0.288    0.144 main.py:17(normalize_text)
+   742000    0.273    0.000    0.366    0.000 main.py:28(<genexpr>)
+        1    0.146    0.146    0.902    0.902 main.py:34(similarity_rate)
+   742002    0.131    0.000    0.195    0.000 main.py:20(<genexpr>)
+  1483996    0.093    0.000    0.093    0.000 {built-in method builtins.ord}
+        2    0.086    0.043    0.280    0.140 {method 'join' of 'str' objects}
+   783000    0.064    0.000    0.064    0.000 {method 'isalnum' of 'str' objects}
+        1    0.058    0.058    0.234    0.234 {built-in method _collections._count_elements}
+   381999    0.048    0.000    0.048    0.000 {method 'get' of 'dict' objects}
+        2    0.003    0.002    0.003    0.002 {method 'casefold' of 'str' objects}
+        2    0.001    0.001    0.001    0.001 {built-in method unicodedata.normalize}
+        2    0.000    0.000    0.284    0.142 main.py:17(normalize_text)
       7/1    0.000    0.000    0.000    0.000 {built-in method _abc._abc_subclasscheck}
