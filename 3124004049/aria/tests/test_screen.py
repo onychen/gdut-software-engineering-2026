@@ -12,11 +12,13 @@ from prompt_toolkit.layout.containers import VerticalAlign
 from prompt_toolkit.layout.screen import WritePosition
 from prompt_toolkit.output import DummyOutput
 
+from core.choice_picker import ChoicePicker
 from core.screen import (
     ChatScreen,
     DraftState,
     SlashCommandCompleter,
     _StreamingAssistantEntry,
+    _render_assistant_content,
 )
 from core.status import create_status_info, format_cwd_for_footer
 from core.model import ToolCall
@@ -1016,6 +1018,58 @@ def test_input_arrows_restore_history_and_move_multiline_cursor(tmp_path: Path) 
     assert screen.input_area.buffer.document.cursor_position_row == 0
     invoke("down")
     assert screen.input_area.buffer.document.cursor_position_row == 1
+
+
+def test_assistant_renderer_preserves_multiple_thinking_blocks() -> None:
+    """同一回复中的多个推理区段都使用思维链样式渲染。"""
+
+    fragments = _render_assistant_content(
+        "\x00first thought\x00first answer\x00second thought\x00final answer"
+    )
+
+    thoughts = [
+        text for style, text in fragments if style == "class:md-thinking"
+    ]
+    rendered = to_plain_text(fragments)
+    assert thoughts == ["first thought\n", "second thought\n"]
+    assert "first answer" in rendered
+    assert "final answer" in rendered
+
+
+@pytest.mark.asyncio
+async def test_choice_picker_arrow_bindings_are_eager_and_scroll(tmp_path: Path) -> None:
+    """单选列表上下键优先于 prompt-toolkit 默认绑定并滚动到后续项。"""
+
+    with create_app_session(output=DummyOutput()):
+        screen = _create_screen(tmp_path)
+        picker = ChoicePicker(
+            [f"gemini-model-{index}" for index in range(30)],
+            "Models",
+        )
+        screen._choice_picker = picker
+        down_binding = next(
+            binding
+            for binding in screen._key_bindings.bindings
+            if _binding_key(binding) == "down"
+            and binding.handler.__name__ == "move_choice_down"
+        )
+        up_binding = next(
+            binding
+            for binding in screen._key_bindings.bindings
+            if _binding_key(binding) == "up"
+            and binding.handler.__name__ == "move_choice_up"
+        )
+
+        assert down_binding.eager()
+        assert up_binding.eager()
+
+        for _ in range(24):
+            down_binding.handler(None)
+
+        assert picker._cursor == 24
+        assert picker.window.vertical_scroll > 0
+        up_binding.handler(None)
+        assert picker._cursor == 23
 
 
 def test_chat_screen_accepts_logo_provider(tmp_path: Path) -> None:

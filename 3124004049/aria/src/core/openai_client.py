@@ -31,6 +31,58 @@ class _ToolCallBuffer:
     arguments: str = ""
 
 
+class _ThoughtTagParser:
+    """把正文流中的 thought 标签内容转换为独立推理事件。"""
+
+    _OPEN_TAG = "<thought>"
+    _CLOSE_TAG = "</thought>"
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._in_thought = False
+
+    def feed(self, text: str) -> list[TextDelta]:
+        """解析一个流式分片，并暂存可能被截断的标签前缀。"""
+
+        self._buffer += text
+        events: list[TextDelta] = []
+        while True:
+            tag = self._CLOSE_TAG if self._in_thought else self._OPEN_TAG
+            position = self._buffer.lower().find(tag)
+            if position >= 0:
+                self._append_event(events, self._buffer[:position])
+                self._buffer = self._buffer[position + len(tag) :]
+                self._in_thought = not self._in_thought
+                continue
+
+            lowered = self._buffer.lower()
+            held = 0
+            for length in range(min(len(tag) - 1, len(lowered)), 0, -1):
+                if lowered.endswith(tag[:length]):
+                    held = length
+                    break
+            ready_length = len(self._buffer) - held
+            self._append_event(events, self._buffer[:ready_length])
+            self._buffer = self._buffer[ready_length:]
+            return events
+
+    def finish(self) -> list[TextDelta]:
+        """流结束时按当前区段类型输出未闭合的尾部内容。"""
+
+        events: list[TextDelta] = []
+        self._append_event(events, self._buffer)
+        self._buffer = ""
+        return events
+
+    def _append_event(self, events: list[TextDelta], text: str) -> None:
+        if not text:
+            return
+        if self._in_thought:
+            events.append(TextDelta("", reasoning=text))
+        else:
+            events.append(TextDelta(text))
+
+
 class OpenAICompatibleClient:
     """使用 OpenAI SDK 调用 OpenAI-compatible 服务。"""
 
@@ -43,6 +95,7 @@ class OpenAICompatibleClient:
 
         self._model_name = settings.model_name
         self._is_deepseek = _is_deepseek_endpoint(settings.base_url)
+        self._is_gemini = _is_gemini_endpoint(settings.base_url)
         self._prompt_cache_key = settings.prompt_cache_key
         self._first_byte_timeout_seconds = settings.first_byte_timeout_seconds
         self._stream_idle_timeout_seconds = settings.stream_idle_timeout_seconds
@@ -107,6 +160,7 @@ class OpenAICompatibleClient:
         if self._stream_usage:
             request["stream_options"] = {"include_usage": True}
 
+        thought_parser = _ThoughtTagParser() if self._is_gemini else None
         try:
             tool_calls: dict[int, _ToolCallBuffer] = {}
             usage: object | None = None
@@ -118,14 +172,21 @@ class OpenAICompatibleClient:
                     continue
                 delta = chunk.choices[0].delta
                 content = getattr(delta, "content", None)
-                if content:
-                    yield TextDelta(content)
+                if isinstance(content, str) and content:
+                    if thought_parser is None:
+                        yield TextDelta(content)
+                    else:
+                        for event in thought_parser.feed(content):
+                            yield event
                 reasoning = _reasoning_delta(delta)
                 if reasoning:
                     yield TextDelta("", reasoning=reasoning)
                 for tool_call_delta in getattr(delta, "tool_calls", None) or ():
                     _append_tool_call_delta(tool_calls, tool_call_delta)
 
+            if thought_parser is not None:
+                for event in thought_parser.finish():
+                    yield event
             for index in sorted(tool_calls):
                 yield ToolCallEvent(_build_tool_call(tool_calls[index], index))
             if usage is not None:
@@ -168,6 +229,14 @@ def _is_deepseek_endpoint(base_url: str) -> bool:
 
     hostname = urlparse(base_url).hostname or ""
     return hostname == "deepseek.com" or hostname.endswith(".deepseek.com")
+
+
+def _is_gemini_endpoint(base_url: str) -> bool:
+    """判断当前请求是否使用 Gemini Developer API 兼容端点。"""
+
+    return (urlparse(base_url).hostname or "").lower() == (
+        "generativelanguage.googleapis.com"
+    )
 
 
 def _apply_thinking_options(

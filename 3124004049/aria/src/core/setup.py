@@ -6,7 +6,8 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from openai import OpenAI
 from prompt_toolkit.application import Application
@@ -20,6 +21,8 @@ from prompt_toolkit.styles import Style
 from .model_capabilities import extract_context_window
 
 PROVIDER_HINTS = "↑/↓ move, Space select, Enter confirm, Esc cancel"
+GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+MANUAL_MODEL_OPTION = "Enter model name manually"
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,10 @@ class Vendor:
 VENDORS = (
     Vendor("DeepSeek", "https://api.deepseek.com/"),
     Vendor("OpenAI", "https://api.openai.com/v1"),
+    Vendor(
+        "Gemini",
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+    ),
     Vendor("Moonshot", "https://api.moonshot.cn/v1"),
     Vendor("Alibaba Bailian", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
     Vendor("Zhipu", "https://open.bigmodel.cn/api/paas/v4"),
@@ -54,6 +61,8 @@ def infer_provider(base_url: str) -> str:
         return "zhipu"
     if "siliconflow" in normalized:
         return "siliconflow"
+    if "generativelanguage.googleapis.com" in normalized:
+        return "gemini"
     if "openai" in normalized:
         return "openai"
     if "moonshot" in normalized:
@@ -64,10 +73,59 @@ def infer_provider(base_url: str) -> str:
 def list_models(base_url: str, api_key: str, timeout: float = 15.0) -> list[str] | None:
     """调用服务商的 /models 接口获取可用模型列表，失败时返回 None。"""
 
+    if infer_provider(base_url) == "gemini":
+        return _list_gemini_models(api_key, timeout)
     try:
         client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
         response = client.models.list()
         return [model.id for model in response.data]
+    except Exception:
+        return None
+
+
+def _list_gemini_models(api_key: str, timeout: float) -> list[str] | None:
+    """通过 Gemini 原生 models.list API 获取支持内容生成的模型。"""
+
+    models: list[str] = []
+    page_token: str | None = None
+    seen_page_tokens: set[str] = set()
+    try:
+        while True:
+            params = {"pageSize": 1000}
+            if page_token:
+                params["pageToken"] = page_token
+            request = Request(
+                f"{GEMINI_MODELS_URL}?{urlencode(params)}",
+                headers={"x-goog-api-key": api_key},
+            )
+            with urlopen(request, timeout=timeout) as response:
+                payload = json.loads(response.read())
+            if not isinstance(payload, dict):
+                return None
+            page_models = payload.get("models", [])
+            if not isinstance(page_models, list):
+                return None
+            for model in page_models:
+                if not isinstance(model, dict):
+                    continue
+                name = model.get("name")
+                methods = model.get("supportedGenerationMethods", [])
+                if (
+                    isinstance(name, str)
+                    and isinstance(methods, list)
+                    and "generateContent" in methods
+                ):
+                    models.append(name.removeprefix("models/"))
+
+            next_page_token = payload.get("nextPageToken")
+            if (
+                not isinstance(next_page_token, str)
+                or not next_page_token
+                or next_page_token in seen_page_tokens
+            ):
+                return list(dict.fromkeys(models))
+            seen_page_tokens.add(next_page_token)
+            page_token = next_page_token
     except Exception:
         return None
 
@@ -172,14 +230,23 @@ async def _prompt_api_key() -> str | None:
 
 
 async def _pick_model(models: list[str] | None) -> str | None:
-    """选择默认模型；模型列表拉取失败时改为手动输入。"""
+    """选择默认模型，或手动输入 API 未列出的型号。"""
 
-    if models:
-        return await _pick_single(
-            f"Choose the default model ({PROVIDER_HINTS})",
-            models,
-        )
-    print("Could not fetch the model list from this provider.")
+    if not models:
+        print("Could not fetch the model list from this provider.")
+        return await _prompt_model_name()
+    choice = await _pick_single(
+        f"Choose the default model ({PROVIDER_HINTS})",
+        [*models, MANUAL_MODEL_OPTION],
+    )
+    if choice != MANUAL_MODEL_OPTION:
+        return choice
+    return await _prompt_model_name()
+
+
+async def _prompt_model_name() -> str | None:
+    """手动输入模型 ID，取消或输入空值时返回 None。"""
+
     value = await _prompt_text("Model name: ")
     if value is None:
         return None

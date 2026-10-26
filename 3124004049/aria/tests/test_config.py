@@ -40,7 +40,7 @@ def test_load_settings_reads_required_values(tmp_path: Path) -> None:
 
     user_path = _write_user_settings(tmp_path, _valid_model())
 
-    settings = load_settings(user_config_path=user_path)
+    settings = load_settings(project_dir=tmp_path, user_config_path=user_path)
 
     assert settings.base_url == "https://example.com/v1"
     assert settings.model_name == "test-model"
@@ -92,7 +92,7 @@ def test_load_settings_reads_model_price(tmp_path: Path) -> None:
         },
     )
 
-    settings = load_settings(user_config_path=user_path)
+    settings = load_settings(project_dir=tmp_path, user_config_path=user_path)
 
     assert settings.price is not None
     assert settings.price.input == 0.55
@@ -115,7 +115,7 @@ def test_load_settings_rejects_price_without_output(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ConfigError):
-        load_settings(user_config_path=user_path)
+        load_settings(project_dir=tmp_path, user_config_path=user_path)
 
 
 def test_load_settings_reads_optional_context_budget(tmp_path: Path) -> None:
@@ -133,7 +133,7 @@ def test_load_settings_reads_optional_context_budget(tmp_path: Path) -> None:
         },
     )
 
-    settings = load_settings(user_config_path=user_path)
+    settings = load_settings(project_dir=tmp_path, user_config_path=user_path)
 
     assert settings.context_window == 50000
     assert settings.reserve_tokens == 8000
@@ -221,7 +221,7 @@ def test_load_settings_rejects_invalid_stdio_mcp_arguments(tmp_path: Path) -> No
     )
 
     with pytest.raises(ConfigError, match="mcp_stdio.arguments"):
-        load_settings(user_config_path=user_path)
+        load_settings(project_dir=tmp_path, user_config_path=user_path)
 
 
 def test_load_settings_rejects_invalid_trusted_mcp_tools(tmp_path: Path) -> None:
@@ -258,7 +258,7 @@ def test_load_settings_rejects_missing_api_key(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ConfigError, match="model.api_key"):
-        load_settings(user_config_path=user_path)
+        load_settings(project_dir=tmp_path, user_config_path=user_path)
 
 
 def test_load_settings_rejects_invalid_base_url(tmp_path: Path) -> None:
@@ -276,7 +276,7 @@ def test_load_settings_rejects_invalid_base_url(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ConfigError, match="model.base_url"):
-        load_settings(user_config_path=user_path)
+        load_settings(project_dir=tmp_path, user_config_path=user_path)
 
 
 def test_load_settings_rejects_missing_user_config(tmp_path: Path) -> None:

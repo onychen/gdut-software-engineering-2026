@@ -1,5 +1,7 @@
 """测试单选选择组件。"""
 
+from types import SimpleNamespace
+
 import pytest
 
 from core.choice_picker import ChoicePicker
@@ -87,6 +89,39 @@ async def test_choice_picker_scrolls_to_keep_cursor_visible() -> None:
 
     assert picker.window.vertical_scroll > 0
     assert picker._cursor == 10
+
+
+@pytest.mark.asyncio
+async def test_choice_picker_uses_rendered_viewport_height(monkeypatch) -> None:
+    """终端可见行数变化时，选择器按实际窗口高度滚动。"""
+
+    picker = ChoicePicker([f"item-{index}" for index in range(20)], "选择")
+    monkeypatch.setattr(
+        picker.window,
+        "render_info",
+        SimpleNamespace(window_height=5),
+    )
+
+    picker.move(5)
+
+    assert picker.window.vertical_scroll == 3
+
+
+@pytest.mark.asyncio
+async def test_choice_picker_window_scroll_keeps_selected_line_visible() -> None:
+    """Window 重绘按选中项所在行滚动，不会将列表复位到顶部。"""
+
+    picker = ChoicePicker([f"item-{index}" for index in range(20)], "选择")
+    picker.move(6)
+    content = picker.window.content.create_content(width=80, height=8)
+
+    picker.window._scroll(content, width=80, height=8)
+
+    assert content.cursor_position.y == 8
+    assert picker.window.vertical_scroll == 1
+    assert picker.window.vertical_scroll <= content.cursor_position.y < (
+        picker.window.vertical_scroll + 8
+    )
 
 
 @pytest.mark.asyncio

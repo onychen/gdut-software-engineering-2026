@@ -192,6 +192,28 @@ async def test_model_command_manual_input_when_list_fails(
 
 
 @pytest.mark.asyncio
+async def test_model_command_manual_input_available_when_list_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """即使服务端有模型列表，仍可手动切换到未列出的模型 ID。"""
+
+    context, loop, screen = _make_context(tmp_path)
+    screen.choice_results = [MANUAL_INPUT_OPTION]
+    screen.text_results = ["gemini-3.8-flash"]
+    monkeypatch.setattr(
+        "core.commands.model.list_models",
+        lambda base_url, api_key: ["gemini-2.5-flash"],
+    )
+
+    await model_command_slash.handler(context)
+
+    assert len(loop.swapped_clients) == 1
+    assert context.client_holder.settings.model_name == "gemini-3.8-flash"
+    assert ("tool", "Switched to model: gemini-3.8-flash") in screen.entries
+
+
+@pytest.mark.asyncio
 async def test_model_command_new_config_writes_project_settings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -225,6 +247,40 @@ async def test_model_command_new_config_writes_project_settings(
     assert context.client_holder.settings.api_key == "new-api-key"
     assert context.client_holder.settings.base_url == "https://api.deepseek.com/"
     assert ("tool", "Switched to model: deepseek-v4-pro") in screen.entries
+
+
+@pytest.mark.asyncio
+async def test_model_command_new_config_can_enter_unlisted_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模型列表可用时，新配置仍允许手动输入未列出的型号。"""
+
+    context, loop, screen = _make_context(tmp_path)
+    screen.choice_results = [NEW_CONFIG_OPTION, "Gemini", MANUAL_INPUT_OPTION]
+    screen.text_results = ["gemini-key", "gemini-3.8-flash"]
+    monkeypatch.setattr(
+        "core.commands.model.list_models",
+        lambda base_url, api_key: ["gemini-2.5-flash"],
+    )
+
+    async def fake_resolve_capabilities(settings, client):
+        return type("Capabilities", (), {"context_window": 128_000})()
+
+    monkeypatch.setattr(
+        "core.commands.model.resolve_model_capabilities",
+        fake_resolve_capabilities,
+    )
+
+    await model_command_slash.handler(context)
+
+    saved_model = json.loads(
+        (tmp_path / ".aria" / "settings.json").read_text(encoding="utf-8")
+    )["model"]
+    assert saved_model["model_name"] == "gemini-3.8-flash"
+    assert saved_model["base_url"] == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    assert context.client_holder.settings.model_name == "gemini-3.8-flash"
+    assert len(loop.swapped_clients) == 1
 
 
 @pytest.mark.asyncio

@@ -118,7 +118,7 @@ uv sync --frozen
 uv run aria
 ```
 
-首次运行会引导选择模型服务商、填写 API Key 和模型名称，并将配置保存到用户目录 `~/.aria/settings.json`。模型须支持工具调用；上下文窗口以实际模型配置为准。
+首次运行会引导选择模型服务商、填写 API Key 和模型名称，并将配置保存到用户目录 `~/.aria/settings.json`。目前支持 DeepSeek、OpenAI、Gemini、Moonshot、阿里云百炼、智谱和硅基流动，也可以手动填写兼容服务地址。Gemini 型号会从其 API 动态获取并筛选支持内容生成的模型；也可手动输入未列出的模型 ID。模型须支持工具调用；上下文窗口以实际模型配置为准。
 
 也可复制 `examples/settings.example.json` 到项目 `.aria/settings.json`，填写真实配置后显式启动：
 

@@ -156,10 +156,13 @@ def _render_assistant_content(
         return render_markdown(content, streaming=streaming)
     parts = content.split("\x00")
     fragments: StyleAndTextTuples = []
-    if len(parts) > 1 and parts[1].strip():
-        fragments.append(("class:md-thinking", parts[1] + "\n"))
-    body = parts[2] if len(parts) > 2 else ""
-    fragments.extend(render_markdown(body, streaming=streaming))
+    for index, part in enumerate(parts):
+        if not part:
+            continue
+        if index % 2:
+            fragments.append(("class:md-thinking", part + "\n"))
+        else:
+            fragments.extend(render_markdown(part, streaming=streaming))
     return fragments
 
 
@@ -1226,7 +1229,7 @@ class ChatScreen:
             if self._skill_picker is not None:
                 self._skill_picker.cancel()
 
-        @key_bindings.add("up", filter=choice_active)
+        @key_bindings.add("up", filter=choice_active, eager=True)
         def move_choice_up(event) -> None:
             """向上移动单选光标。"""
 
@@ -1234,7 +1237,7 @@ class ChatScreen:
                 self._choice_picker.move(-1)
                 self.application.invalidate()
 
-        @key_bindings.add("down", filter=choice_active)
+        @key_bindings.add("down", filter=choice_active, eager=True)
         def move_choice_down(event) -> None:
             """向下移动单选光标。"""
 

@@ -7,6 +7,7 @@ from prompt_toolkit.formatted_text import AnyFormattedText
 from prompt_toolkit.layout import Window
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.layout.screen import Point
 
 
 class ChoicePicker:
@@ -33,7 +34,12 @@ class ChoicePicker:
             asyncio.get_running_loop().create_future()
         )
         self.window = Window(
-            content=FormattedTextControl(self._render, focusable=True),
+            content=FormattedTextControl(
+                self._render,
+                focusable=True,
+                show_cursor=False,
+                get_cursor_position=self._cursor_position,
+            ),
             height=Dimension(min=3, preferred=8),
             dont_extend_height=True,
             wrap_lines=True,
@@ -59,9 +65,20 @@ class ChoicePicker:
     def _follow_cursor(self) -> None:
         """滚动窗口让当前光标项始终可见。"""
 
-        max_scroll = max(0, len(self._choices) - self._VISIBLE_CHOICES)
-        desired_scroll = max(0, self._cursor - (self._VISIBLE_CHOICES - 1))
+        render_info = self.window.render_info
+        visible_choices = self._VISIBLE_CHOICES
+        if render_info is not None:
+            visible_choices = max(1, render_info.window_height - 2)
+        max_scroll = max(0, len(self._choices) - visible_choices)
+        desired_scroll = max(0, self._cursor - (visible_choices - 1))
         self.window.vertical_scroll = min(max_scroll, desired_scroll)
+
+    def _cursor_position(self) -> Point | None:
+        """返回当前选项的文本行，让 Window 重绘时保留滚动位置。"""
+
+        if not self._choices:
+            return None
+        return Point(x=0, y=self._cursor + 2)
 
     def confirm(self) -> None:
         """确认当前光标项并返回选择结果。"""

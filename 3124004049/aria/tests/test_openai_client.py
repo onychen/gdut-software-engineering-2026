@@ -875,6 +875,56 @@ async def test_client_streams_openai_compatible_reasoning_fields(field: str) -> 
 
 
 @pytest.mark.asyncio
+async def test_gemini_thought_tags_stream_as_foldable_reasoning() -> None:
+    """Gemini 正文中的 thought 标签按 reasoning 事件输出，支持分片跨标签。"""
+
+    fake_sdk = FakeClient(
+        [
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content="Answer prefix <tho")
+                    )
+                ]
+            ),
+            SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="ught>Reason"))]
+            ),
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(
+                            content=(
+                                "ing</thought> answer <thought>second"
+                                "</thought> done"
+                            )
+                        )
+                    )
+                ]
+            ),
+        ]
+    )
+    settings = Settings(
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        model_name="gemini-model",
+        api_key="test-key",
+        stream_usage=False,
+    )
+    client = OpenAICompatibleClient(settings, fake_sdk)  # type: ignore[arg-type]
+
+    events = await _collect_events(client)
+
+    assert events == [
+        TextDelta("Answer prefix "),
+        TextDelta("", reasoning="Reason"),
+        TextDelta("", reasoning="ing"),
+        TextDelta(" answer "),
+        TextDelta("", reasoning="second"),
+        TextDelta(" done"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_client_sends_reasoning_content_for_deepseek() -> None:
     """测试直连 DeepSeek 时 assistant 的 reasoning_content 随请求回传。"""
 

@@ -11,7 +11,7 @@ from ..setup import VENDORS, list_models, write_settings_atomically
 from .registry import CommandContext, SlashCommand
 
 NEW_CONFIG_OPTION = "new config"
-MANUAL_INPUT_OPTION = "manual input"
+MANUAL_INPUT_OPTION = "enter model name manually"
 _CHOICE_HINTS = "↑/↓ move, Enter confirm, Esc cancel"
 
 
@@ -24,10 +24,9 @@ async def model_command(context: CommandContext) -> None:
         f"Current config: {current.model_name} @ {current.base_url}",
     )
     models = await asyncio.to_thread(list_models, current.base_url, current.api_key)
-    extra_options = [NEW_CONFIG_OPTION]
+    extra_options = [NEW_CONFIG_OPTION, MANUAL_INPUT_OPTION]
     if not models:
         models = []
-        extra_options.append(MANUAL_INPUT_OPTION)
         context.screen.add_entry("tool", "Could not fetch model list, enter manually")
     choice = await context.screen.request_choice_picker(
         models,
@@ -68,7 +67,10 @@ async def _create_new_config(context: CommandContext) -> None:
         model_name = await context.screen.request_choice_picker(
             models,
             f"Select default model ({_CHOICE_HINTS})",
+            extra_options=[MANUAL_INPUT_OPTION],
         )
+        if model_name == MANUAL_INPUT_OPTION:
+            model_name = await context.screen.request_text_input("Model name")
     else:
         context.screen.add_entry("tool", "Could not fetch model list, enter model name")
         model_name = await context.screen.request_text_input("Model name")

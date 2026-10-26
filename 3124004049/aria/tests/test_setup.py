@@ -1,11 +1,13 @@
 import asyncio
 import json
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
 from core import setup
 from core.setup import (
+    MANUAL_MODEL_OPTION,
     VENDORS,
     infer_provider,
     list_models,
@@ -58,6 +60,11 @@ def test_vendors_include_manual_config() -> None:
 
     names = [vendor.name for vendor in VENDORS]
 
+    assert "Gemini" in names
+    assert (
+        next(vendor for vendor in VENDORS if vendor.name == "Gemini").base_url
+        == "https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
     assert "Manual" in names
     assert next(vendor for vendor in VENDORS if vendor.name == "Manual").base_url == ""
 
@@ -66,6 +73,10 @@ def test_infer_provider_matches_base_url() -> None:
     """测试根据 base_url 推断厂商名。"""
 
     assert infer_provider("https://api.deepseek.com/") == "deepseek"
+    assert (
+        infer_provider("https://generativelanguage.googleapis.com/v1beta/openai/")
+        == "gemini"
+    )
     assert (
         infer_provider("https://dashscope.aliyuncs.com/compatible-mode/v1")
         == "alibaba"
@@ -98,6 +109,94 @@ def test_list_models_returns_none_on_failure(monkeypatch: pytest.MonkeyPatch) ->
     )
 
     assert list_models("https://example.com", "key") is None
+
+
+def test_list_gemini_models_uses_native_api_with_pagination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini 型号从原生 API 动态分页获取，并过滤不支持生成的模型。"""
+
+    pages = [
+        {
+            "models": [
+                {
+                    "name": "models/gemini-current-flash",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+                {
+                    "name": "models/text-embedding-latest",
+                    "supportedGenerationMethods": ["embedContent"],
+                },
+            ],
+            "nextPageToken": "page-2",
+        },
+        {
+            "models": [
+                {
+                    "name": "models/gemini-current-pro",
+                    "supportedGenerationMethods": ["generateContent"],
+                }
+            ]
+        },
+    ]
+    requests = []
+
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+
+        def __enter__(self) -> "FakeResponse":
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(self.payload).encode()
+
+    def fake_urlopen(request, timeout: float):
+        requests.append((request, timeout))
+        return FakeResponse(pages[len(requests) - 1])
+
+    monkeypatch.setattr(setup, "urlopen", fake_urlopen)
+
+    models = list_models(
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "gemini-key",
+        timeout=7,
+    )
+
+    assert models == [
+        "gemini-current-flash",
+        "gemini-current-pro",
+    ]
+    assert "gemini-3.8-flash" not in models
+    assert len(requests) == 2
+    assert requests[0][0].get_header("X-goog-api-key") == "gemini-key"
+    assert requests[0][1] == 7
+    assert parse_qs(urlparse(requests[1][0].full_url).query)["pageToken"] == [
+        "page-2"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pick_model_allows_manual_id_when_list_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """API 返回目录时仍能手动选择尚未出现在目录中的模型 ID。"""
+
+    async def fake_pick_single(title: str, items: list[str]) -> str:
+        assert items == ["gemini-2.5-flash", MANUAL_MODEL_OPTION]
+        return MANUAL_MODEL_OPTION
+
+    async def fake_prompt_text(prompt_text: str) -> str:
+        assert prompt_text == "Model name: "
+        return "gemini-3.8-flash"
+
+    monkeypatch.setattr(setup, "_pick_single", fake_pick_single)
+    monkeypatch.setattr(setup, "_prompt_text", fake_prompt_text)
+
+    assert await setup._pick_model(["gemini-2.5-flash"]) == "gemini-3.8-flash"
 
 
 def test_write_settings_atomically_writes_complete_config(tmp_path: Path) -> None:
